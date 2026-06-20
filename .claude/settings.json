@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile analysis/real_divergence_report.py ingest/places_grid.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c ' *)",
+      "Bash(break)",
+      "Bash(wc -l data/raw/bcn.jsonl)",
+      "Bash(PYTHONIOENCODING=utf-8 python -u -m analysis.real_divergence_report)",
+      "PowerShell($start = Get-Date '2026/06/20 20:59:45'; $now = Get-Date; $elapsed = [math]::Round\\(\\($now - $start\\).TotalSeconds\\); \"now=$\\($now.ToString\\('HH:mm:ss'\\)\\)  elapsed=${elapsed}s  \\(~$\\([math]::Round\\($elapsed/60,1\\)\\) min\\)\")"
+    ]
+  }
+}

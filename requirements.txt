@@ -1,0 +1,12 @@
+# Dependencies actually used across the implemented modules (ingest / nlp / scoring /
+# rerank / analysis / eval / app). Listed roughly in the order they were introduced.
+numpy
+scipy            # Pearson / Spearman correlation
+matplotlib       # the figures in divergence_report etc.
+google-genai     # nlp/absa.py LlmAbsa (Gemini, new SDK; follows mindful-tourism)
+python-dotenv    # load GEMINI_API_KEY / GOOGLE_PLACES_API_KEY from .env
+pandas           # dataframes in eval / app
+streamlit        # app/streamlit_app.py demo UI (§8)
+folium           # map
+streamlit-folium # embedding the map in Streamlit
+requests         # ingest/places_grid.py Google Places API (New) calls

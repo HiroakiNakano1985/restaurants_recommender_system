@@ -1,0 +1,11 @@
+# Secrets — NEVER commit
+.env
+
+# Raw / processed data: real Google reviews contain personal data (author names) and are
+# subject to Places API ToS caching limits — keep OUT of the repo. Figures (reports/) are
+# aggregate and safe, so they ARE committed.
+data/
+
+# Python
+__pycache__/
+*.pyc
