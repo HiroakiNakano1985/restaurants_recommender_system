@@ -16,6 +16,8 @@ just calls the existing score_places / rerank — no logic change.
 
 from __future__ import annotations
 
+import csv
+import os
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
@@ -29,6 +31,7 @@ except Exception:                      # fallback so it also works without strea
     def cache(func=None, **_kw):
         return func if func else (lambda f: f)
 
+from ingest.schema import Place
 from ingest.synth import generate
 from nlp.absa import get_analyzer
 from rerank.personalize import compute_aspect_scores
@@ -38,6 +41,58 @@ from scoring.weights import Weights
 
 NOW = datetime(2026, 6, 20, tzinfo=timezone.utc)   # fixed for determinism
 ASPECTS = ("food", "service", "ambiance", "price")
+# Anonymized real-data file (place facts + derived scores only — NO review text/author names).
+PUBLIC_REAL_CSV = os.path.join(os.path.dirname(__file__), "public_data", "bcn_real_public.csv")
+
+
+def _num(v) -> Optional[float]:
+    return None if v in (None, "") else float(v)
+
+
+def _booln(v):
+    return True if v == "True" else False if v == "False" else None
+
+
+def load_real_dataset(csv_path: str = PUBLIC_REAL_CSV):
+    """Real Barcelona data from the committed anonymized CSV (no reviews → reviews_by_place is {}).
+
+    Returns the same (df, reviews_by_place, places, aspect_scores) shape as the synthetic loader, so
+    the UI is identical. FQS/ranks/aspect scores are precomputed (offline) — there is no review text
+    to recompute from, so the FQS-weight sliders are inert in real mode (the UI hides them).
+    """
+    with open(csv_path, encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    df_rows: List[dict] = []
+    places: List[Place] = []
+    aspect_scores: Dict[str, dict] = {}
+    for r in rows:
+        pid = r["place_id"]
+        aspect_scores[pid] = {a: _num(r.get(f"aspect_{a}")) for a in ASPECTS}
+        places.append(Place.from_dict({
+            "place_id": pid, "name": r["name"], "star_rating": _num(r["star_rating"]) or 0.0,
+            "review_count": int(_num(r["review_count"]) or 0), "cuisine": r["cuisine"] or None,
+            "price_level": r["price_level"] or None, "lat": _num(r["lat"]) or 0.0,
+            "lng": _num(r["lng"]) or 0.0, "district": r["district"] or None,
+            "is_tourist_area": _booln(r["is_tourist_area"]), "fqs": _num(r["fqs"]),
+            "star_rank": int(_num(r["star_rank"])) if r["star_rank"] else None,
+            "fqs_rank": int(_num(r["fqs_rank"])) if r["fqs_rank"] else None,
+            "rank_delta": int(_num(r["rank_delta"])) if r["rank_delta"] else None,
+        }))
+        df_rows.append({
+            "place_id": pid, "name": r["name"], "district": r["district"],
+            "cuisine": r["cuisine"], "price_level": r["price_level"] or None,
+            "is_tourist_area": _booln(r["is_tourist_area"]),
+            "star_rating": _num(r["star_rating"]), "fqs": _num(r["fqs"]),
+            "star_rank": int(_num(r["star_rank"])) if r["star_rank"] else None,
+            "fqs_rank": int(_num(r["fqs_rank"])) if r["fqs_rank"] else None,
+            "rank_delta": int(_num(r["rank_delta"])) if r["rank_delta"] else None,
+            "review_count": int(_num(r["review_count"]) or 0),
+            "lat": _num(r["lat"]), "lng": _num(r["lng"]),
+            "food_mention_rate": _num(r["food_mention_rate"]) or 0.0,
+            "n_reviews": int(_num(r["n_reviews"]) or 0),
+            "rep_review": None, "rep_rating": None,   # review text intentionally NOT published
+        })
+    return pd.DataFrame(df_rows), {}, places, aspect_scores
 
 
 def _food_mention_rate(reviews) -> float:
@@ -72,14 +127,13 @@ def build_dataset(
     ({place_id: {food/service/ambiance/price: score}}) are returned so the UI can call
     rerank.personalize.personalize() (Layer 2) directly with the precomputed aspect scores.
 
-    source="synthetic": run the synthetic pipeline in memory (current)
-    source="parquet"  : read the artifacts under data/processed (just add this once real data exists)
+    source="synthetic": run the synthetic pipeline in memory
+    source="real"     : read the committed anonymized real Barcelona CSV (no review text/authors)
     """
+    if source == "real":
+        return load_real_dataset()
     if source != "synthetic":
-        raise NotImplementedError(
-            "Real-data loading (Parquet) will be added to this function after real data is fetched. "
-            "The UI only depends on the shape of this function's return value, so it needs no change."
-        )
+        raise ValueError(f"unknown source: {source}")
 
     # --- existing pipeline (logic unchanged; only called) ---
     places, reviews = generate(n_places=n_places, seed=seed)

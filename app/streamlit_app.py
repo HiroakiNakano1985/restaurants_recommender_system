@@ -41,27 +41,42 @@ ANY = "(Any)"          # sentinel for "no max-price filter"
 MODE_L1 = "Layer 1: browse all by FQS"
 MODE_L2 = "Layer 2: recommend for me"
 PRICE_OPTS = [ANY, "INEXPENSIVE", "MODERATE", "EXPENSIVE", "VERY_EXPENSIVE"]
+DATA_REAL = "Real Barcelona (652)"
+DATA_SYNTH = "Synthetic demo"
 
 # ----------------------------------------------------------------- sidebar
 st.sidebar.header("⚙ Controls")
 
+# Dataset: real Barcelona (anonymized) by default; synthetic demo as an alternative.
+dataset = st.sidebar.radio("Dataset", [DATA_REAL, DATA_SYNTH], key="dataset",
+                           help="Real = 652 Barcelona restaurants (place facts + our derived "
+                                "scores; no review text/author names). Synthetic = generated demo "
+                                "(lets the FQS weight sliders recompute live).")
+is_real = (dataset == DATA_REAL)
+
 # Two-layer toggle (the point of this UI):
 #   Layer 1 = de-biased FQS ranking, shared by all users.
-#   Layer 2 = filter by the user's preferences, then order by FQS (rerank.personalize).
+#   Layer 2 = filter by the user's preferences, then order by a weighted aspect blend.
 mode = st.sidebar.radio("Mode", [MODE_L1, MODE_L2], key="mode",
                         help="Layer 1: everyone sees the same FQS ranking. "
-                             "Layer 2: your preferences select candidates, ordered by FQS.")
+                             "Layer 2: your preferences select candidates, ranked by your aspect weights.")
 
-# Weights (live recompute: just calls the existing score_places/rerank)
-st.sidebar.subheader("Weights (FQS recomputed live)")
-half_life = st.sidebar.slider("time decay half-life (days)", 30, 1095, 365, step=15,
-                              key="half_life",
-                              help="Favor newer reviews. Smaller = more recency-weighted. Changing it moves ranks.")
-norm_cuisine = st.sidebar.checkbox("cuisine normalization",
-                                   value=True, key="norm_cuisine")
+# FQS-recompute weights are only meaningful on synthetic data (real FQS is precomputed offline,
+# and the anonymized real file carries no review text to recompute from).
+if is_real:
+    half_life, norm_cuisine = 365, True
+    st.sidebar.caption("Real data: FQS is precomputed from real reviews; the aspect-weight sliders "
+                       "(Layer 2) still personalize live.")
+else:
+    st.sidebar.subheader("Weights (FQS recomputed live)")
+    half_life = st.sidebar.slider("time decay half-life (days)", 30, 1095, 365, step=15,
+                                  key="half_life",
+                                  help="Favor newer reviews. Smaller = more recency-weighted. Changing it moves ranks.")
+    norm_cuisine = st.sidebar.checkbox("cuisine normalization", value=True, key="norm_cuisine")
 
-# Build the dataset (cached on the weights). `places` + `aspect_scores` feed Layer 2.
+# Build the dataset. `places` + `aspect_scores` feed Layer 2.
 df_all, reviews_by_place, places, aspect_scores = build_dataset(
+    source=("real" if is_real else "synthetic"),
     half_life_days=half_life, normalize_by_cuisine=norm_cuisine)
 
 # Preferences / filters (district & cuisine are shared by both modes)
@@ -133,9 +148,13 @@ else:
 
 # ----------------------------------------------------------------- header
 st.title("🍽 Barcelona — Google stars vs Food Quality")
-st.info("⚠ This is a demo on **synthetic data**. Once real data (Google Places / "
-        "Michelin/Repsol) is available, the same loader and same UI run the real thing.",
-        icon="ℹ️")
+if is_real:
+    st.info("Live on **652 real Barcelona restaurants** (Google Places). Only **place facts + our "
+            "derived scores** are shown — **no review text or author names** are published.",
+            icon="📍")
+else:
+    st.info("⚠ This is a demo on **synthetic data**. Switch *Dataset* to **Real Barcelona** in the "
+            "sidebar for the real 652-restaurant data.", icon="ℹ️")
 st.markdown(f"**{'🎯 Layer 2 — recommended for you' if is_l2 else '🌐 Layer 1 — de-biased FQS ranking'}** · "
             f"{view_caption} · {len(df)} stores")
 
@@ -252,3 +271,8 @@ with st.expander("How to read this demo / data caveats"):
         "- **Note this is synthetic data**. The divergence here is built into the generative "
         "design; the method is validated separately with real labels (Michelin/Repsol) "
         "(eval/run_eval.py).")
+
+st.divider()
+st.caption("Data source: Google Places API — place facts (name, rating, location) shown with "
+           "attribution. FQS and aspect scores are our own analysis. The public app publishes **no "
+           "review text and no author names** (GDPR / Places ToS).")
