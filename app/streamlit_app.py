@@ -109,6 +109,27 @@ else:
 st.sidebar.caption("State is held in session_state (no localStorage). "
                    "Changing the weights recomputes FQS immediately.")
 
+# ----------------------------------------------------------------- absolute trap/gem
+# Colour by an ABSOLUTE definition (matches the deck's 56 traps / 31 gems and the legend):
+#   trap = high star (>=4.6) but FQS in the bottom quartile; gem = low star (<=4.4) but FQS top quartile.
+# (NOT rank_delta, which is a *relative* within-group rank movement — it can mark a high-FQS place red.)
+TRAP_STAR_MIN, GEM_STAR_MAX = 4.6, 4.4
+_fqs_all = df_all["fqs"].dropna()
+FQS_Q25 = float(_fqs_all.quantile(0.25)) if len(_fqs_all) else 0.0
+FQS_Q75 = float(_fqs_all.quantile(0.75)) if len(_fqs_all) else 0.0
+
+
+def classify_abs(row):
+    f = row["fqs"]
+    if f is None or (isinstance(f, float) and np.isnan(f)):
+        return "neutral"
+    if row["star_rating"] >= TRAP_STAR_MIN and f <= FQS_Q25:
+        return "trap"
+    if row["star_rating"] <= GEM_STAR_MAX and f >= FQS_Q75:
+        return "gem"
+    return "neutral"
+
+
 # ----------------------------------------------------------------- build the working set
 rec_by_id = {}
 if is_l2:
@@ -129,7 +150,7 @@ if is_l2:
         df = df_all.set_index("place_id").loc[ordered_ids].reset_index()
     else:
         df = df_all.iloc[0:0].copy()
-    df["kind"] = df["rank_delta"].apply(classify)
+    df["kind"] = df.apply(classify_abs, axis=1)
     df_sorted = df                       # already ordered by personalized score
     view_caption = (f"district=`{sel_district}` / cuisine=`{sel_cuisine}` / "
                     f"max price=`{sel_price}` / min star=`{sel_min_star}`")
@@ -141,7 +162,7 @@ else:
     if sel_cuisine != ALL:
         df = df[df["cuisine"] == sel_cuisine]
     df = df.copy()
-    df["kind"] = df["rank_delta"].apply(classify)
+    df["kind"] = df.apply(classify_abs, axis=1)
     sort_col = "star_rating" if sort_axis == "Google stars" else "fqs"
     df_sorted = df.sort_values(sort_col, ascending=False)
     view_caption = (f"district=`{sel_district}` / cuisine=`{sel_cuisine}` / sort=`{sort_axis}`")
