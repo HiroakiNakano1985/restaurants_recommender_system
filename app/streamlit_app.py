@@ -166,20 +166,28 @@ if df.empty:
 left, right = st.columns([1, 1])
 
 with left:
-    st.subheader("① Divergence scatter (star vs FQS)")
+    st.subheader("① Your picks on the star–FQS map" if is_l2
+                 else "① Divergence scatter (star vs FQS)")
     sub = df.dropna(subset=["fqs"])
     fig, ax = plt.subplots(figsize=(6, 5))
-    for kind in ("neutral", "gem", "trap"):
-        s = sub[sub["kind"] == kind]
-        if not s.empty:
-            ax.scatter(s["star_rating"], s["fqs"], c=COLOR[kind], s=55, alpha=0.8,
-                       edgecolors="white", linewidths=0.5,
-                       label={"trap": "tourist trap (star-high / FQS-low)",
-                              "gem": "discovered gem (star-low / FQS-high)",
-                              "neutral": "other"}[kind])
-    if len(sub) > 1:
-        r = np.corrcoef(sub["star_rating"], sub["fqs"])[0, 1]
-        ax.set_title(f"Pearson r = {r:.3f}  (lower = stronger divergence)", fontsize=10)
+    if is_l2:
+        # Layer 2 = recommendations: one "recommended" colour. The trap/gem lens is a Layer-1
+        # diagnostic (relative star-vs-FQS movement) and does not belong on a recommendation list.
+        ax.scatter(sub["star_rating"], sub["fqs"], c="#55A868", s=60, alpha=0.85,
+                   edgecolors="white", linewidths=0.5, label="recommended for you")
+        ax.set_title("Your recommendations (ranked by your aspect weights)", fontsize=10)
+    else:
+        for kind in ("neutral", "gem", "trap"):
+            s = sub[sub["kind"] == kind]
+            if not s.empty:
+                ax.scatter(s["star_rating"], s["fqs"], c=COLOR[kind], s=55, alpha=0.8,
+                           edgecolors="white", linewidths=0.5,
+                           label={"trap": "tourist trap (star-high / FQS-low)",
+                                  "gem": "discovered gem (star-low / FQS-high)",
+                                  "neutral": "other"}[kind])
+        if len(sub) > 1:
+            r = np.corrcoef(sub["star_rating"], sub["fqs"])[0, 1]
+            ax.set_title(f"Pearson r = {r:.3f}  (lower = stronger divergence)", fontsize=10)
     ax.set_xlabel("Google star rating")
     ax.set_ylabel("Food Quality Score (FQS)")
     ax.grid(alpha=0.2)
@@ -187,10 +195,14 @@ with left:
     fig.tight_layout()
     st.pyplot(fig)
     plt.close(fig)
+    if is_l2:
+        st.caption(f"{len(sub)} recommendations plotted — points overlap where FQS is similar "
+                   "(your top picks all score high). The full 651-point divergence view is Layer 1.")
 
 # ----------------------------------------------------------------- map
 with right:
-    st.subheader("② Map (🔴 trap / 🟢 gem / 🔵 other)")
+    st.subheader("② Map — your recommendations" if is_l2
+                 else "② Map (🔴 trap / 🟢 gem / 🔵 other)")
     try:
         import folium
         from streamlit_folium import st_folium
@@ -199,15 +211,19 @@ with right:
         fmap = folium.Map(location=center, zoom_start=13, tiles="CartoDB positron")
         for _, row in df.iterrows():
             kind = row["kind"]
+            mcolor = "#55A868" if is_l2 else COLOR[kind]   # Layer 2: all "recommended" (green)
+            tag = "🎯 recommended" if is_l2 else f"{ARROW[kind]} (Δ{row['rank_delta']})"
             popup = folium.Popup(
                 f"<b>{row['name']}</b><br>⭐{row['star_rating']:.2f} / "
-                f"🍽FQS {row['fqs']:.2f}<br>{ARROW[kind]} (Δ{row['rank_delta']})",
-                max_width=240)
+                f"🍽FQS {row['fqs']:.2f}<br>{tag}", max_width=240)
             folium.CircleMarker(
                 location=[row["lat"], row["lng"]], radius=7,
-                color=COLOR[kind], fill=True, fill_color=COLOR[kind],
+                color=mcolor, fill=True, fill_color=mcolor,
                 fill_opacity=0.85, popup=popup, tooltip=row["name"],
             ).add_to(fmap)
+        pts = df.dropna(subset=["lat", "lng"])[["lat", "lng"]].values.tolist()
+        if len(pts) > 1:
+            fmap.fit_bounds(pts)        # zoom/pan so ALL markers are visible
         st_folium(fmap, use_container_width=True, height=400, returned_objects=[])
     except Exception as exc:  # noqa: BLE001
         st.warning(f"Failed to render the map (folium not installed?): {exc}")
