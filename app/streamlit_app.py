@@ -224,10 +224,16 @@ else:
                "Switching the sort axis changes the order, and Δ explains "
                "\"ranked #X by stars but #Y by FQS\".")
 
-TOP_N = 12
-shown = df_sorted.head(TOP_N)
-if len(df_sorted) > TOP_N:
-    st.caption(f"Showing the top {TOP_N} (of {len(df_sorted)} total).")
+# Layer 2: show ALL of the user's chosen recommendations (df_sorted already = top_n).
+# Layer 1: cap the browse list so we don't render hundreds of cards.
+BROWSE_CAP = 12
+card_limit = len(df_sorted) if is_l2 else BROWSE_CAP
+shown = df_sorted.head(card_limit)
+if is_l2:
+    st.caption(f"Showing your top **{len(shown)}** recommendations (ranked from {len(df_all)} "
+               f"restaurants). Use the *How many recommendations* slider to change this.")
+elif len(df_sorted) > BROWSE_CAP:
+    st.caption(f"Showing the top {BROWSE_CAP} of {len(df_sorted)} (switch to Layer 2 to personalize).")
 
 for _, row in shown.iterrows():
     kind = row["kind"]
